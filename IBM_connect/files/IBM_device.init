@@ -1,0 +1,33 @@
+#!/bin/sh /etc/rc.common
+
+USE_PROCD=1
+
+start_service() {
+    local enabled 
+    local orgid
+    local typeid
+    local deviceid
+    local authtoken
+    config_load 'IBM_device'
+    config_get enabled device_sct 'enable' '0'
+    config_get orgid device_sct 'orgId' ''
+    config_get typeid device_sct 'typeId' ''
+    config_get deviceid device_sct 'deviceId' ''
+    config_get authtoken device_sct 'authToken' ''
+
+    if [ "$enabled" -eq 1 ]; then
+        procd_open_instance 
+        procd_set_param command /usr/bin/IBM_connect $orgid $typeid $deviceid $authtoken
+        procd_set_param file /etc/config/IBM_device
+        procd_close_instance
+    fi
+}
+
+service_triggers() {
+    procd_add_reload_trigger "IBM_device"
+}
+
+reload_service() {
+    stop
+    start
+}
