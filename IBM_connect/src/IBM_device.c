@@ -126,10 +126,11 @@ int main(int argc, char *argv[])
     IoTPConfig *config = NULL;
     IoTPDevice *device = NULL;
     openlog(NULL, LOG_CONS, LOG_USER);
-    syslog(LOG_INFO,"orgId: %s typeId: %s deviceId: %s authToken: %s",argv[1],argv[2],argv[3],argv[4]);
     
     if ( argc != 5 )
         usage();
+    syslog(LOG_INFO,"orgId: %s typeId: %s deviceId: %s authToken: %s",argv[1],argv[2],argv[3],argv[4]);
+    
     signal(SIGINT, sigHandler);
     signal(SIGTERM, sigHandler);
     
