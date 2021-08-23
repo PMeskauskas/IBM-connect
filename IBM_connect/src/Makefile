@@ -1,5 +1,5 @@
 BIN:=IBM_connect
-LDFLAGS:=-liotp-as-device
+LDFLAGS:=-liotp-as-device -lblobmsg_json -lubox -lubus
 CPPFLAGS:=-I$(CURDIR)
 SRC:=$(wildcard *.c)
 OBJS:=$(SRC:.c=.o)

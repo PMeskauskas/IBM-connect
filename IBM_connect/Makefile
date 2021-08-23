@@ -9,7 +9,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/IBM_connect
 	CATEGORY:=Base system
 	TITLE:=IBM_connect
-	DEPENDS:=+libIBMWatson
+	DEPENDS:=+libIBMWatson +libubox +libblobmsg-json +libubus +luci-app-IBM_connect
 endef
 
 define Package/IBM_connect/description

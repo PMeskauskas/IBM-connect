@@ -6,6 +6,8 @@
 #include <sys/resource.h>
 #include <iotp_device.h>
 #include <syslog.h>
+#include "IBM_device.h"
+#include "IBM_invoke.h"
 volatile int interrupt = 0;
 
 void cleanup()
@@ -84,37 +86,14 @@ void deviceDisconnect(IoTPDevice *device, IoTPConfig *config)
     }
 }
 
-void calculateMemory(float *memtotal, float *memfree)
-{
-    char buff[256];
-    FILE *fp;
-    fp = fopen("/proc/meminfo", "r");
-    if(fp != NULL){
-    fscanf(fp, "%s", buff);
-    fscanf(fp, "%s", buff);
-    *memtotal = atoi(buff)/1000.0;
-    fscanf(fp, "%s", buff);
-    fscanf(fp, "%s", buff);
-    fscanf(fp, "%s", buff);
-    *memfree = atoi(buff)/1000.0;
-    }
-    else
-    {
-        memtotal = 0;
-        memfree = 0;
-    }
-    fclose(fp);
-}
-
 void deviceSendEvent(IoTPDevice *device)
 {
     char data[256];
     int rc = 0;
+    struct memoryData memory={0, 0};
     while(!interrupt){
-        float memtotal = 0;
-        float memfree = 0;
-        calculateMemory(&memtotal, &memfree);
-        sprintf(data,"{\"Memory usage\": \"%.2f MB/ %.2f MB\"}", memtotal-memfree, memtotal);
+        connectUbus(&memory);
+        sprintf(data,"{\"Memory usage\": \"%0.2f MB / %0.2f MB\"}", ((memory.totalMemory-memory.freeMemory)/1000000.0), memory.totalMemory/1000000.0);
         rc = IoTPDevice_sendEvent(device,"status", data, "json", QoS0, NULL);
         syslog(LOG_INFO, "RC from sendEvent(): %d\n", rc);
         sleep(10);
@@ -147,4 +126,3 @@ int main(int argc, char *argv[])
     closelog();
     return 0;
 }
-
