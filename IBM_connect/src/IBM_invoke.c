@@ -1,6 +1,7 @@
 #include <libubox/blobmsg_json.h>
 #include <libubus.h>
 #include "IBM_device.h"
+#include <syslog.h>
 int rc = 0;
 
 enum {
@@ -35,7 +36,7 @@ static void board_cb(struct ubus_request *req, int type, struct blob_attr *msg) 
 	blobmsg_parse(info_policy, __INFO_MAX, tb, blob_data(msg), blob_len(msg));
 
 	if (!tb[MEMORY_DATA]) {
-		fprintf(stderr, "No memory data received\n");
+		syslog(LOG_ERR, "No memory data received\n");
 		rc=-1;
 		return;
 	}
@@ -46,25 +47,24 @@ static void board_cb(struct ubus_request *req, int type, struct blob_attr *msg) 
 	buf->freeMemory=blobmsg_get_u64(memory[FREE_MEMORY]);
 }
 
-void connectUbus(struct memoryData *memory)
+int getMemoryDataFromUbus(struct ubus_context **ctx, struct memoryData *memory)
 {
-	struct ubus_context *ctx;
 	uint32_t id;
-	ctx = ubus_connect(NULL);
-	if (!ctx) {
-		fprintf(stderr, "Failed to connect to ubus\n");
-		return -1;
+	int rc = 0;
+	if (ubus_lookup_id(*ctx, "system", &id) ||
+	    ubus_invoke(*ctx, id, "info", NULL, board_cb, memory, 3000)) {
+		syslog(LOG_ERR, "cannot request memory info from procd\n");
+		rc = -1;
 	}
-
-	if (ubus_lookup_id(ctx, "system", &id) ||
-	    ubus_invoke(ctx, id, "info", NULL, board_cb, memory, 3000)) {
-		fprintf(stderr, "cannot request memory info from procd\n");
-		rc=-1;
-	}
-
-	ubus_free(ctx);
-
 	return rc;
 }
 
-
+int connectUbus(struct ubus_context **ctx){
+	int rc = 0;
+	*ctx = ubus_connect(NULL);
+	if (!*ctx) {
+		syslog(LOG_ERR, "Failed to connect to ubus\n");
+		rc = -1;
+	}
+	return rc;
+}

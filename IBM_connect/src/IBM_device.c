@@ -8,6 +8,8 @@
 #include <syslog.h>
 #include "IBM_device.h"
 #include "IBM_invoke.h"
+#include <libubox/blobmsg_json.h>
+#include <libubus.h>
 volatile int interrupt = 0;
 
 void cleanup()
@@ -44,17 +46,23 @@ void configCreate(IoTPConfig **config, char *argv[])
 {
     int rc = 0;
     rc = IoTPConfig_create(config, NULL);
-    if ( rc != 0 ) {
+    CheckConfig(rc,*config);
+    rc = IoTPConfig_setProperty(*config, "identity.orgId", argv[1]);
+    CheckConfig(rc,*config);
+    rc = IoTPConfig_setProperty(*config, "identity.typeId", argv[2]);
+    CheckConfig(rc,*config);
+    rc = IoTPConfig_setProperty(*config, "identity.deviceId", argv[3]);
+    CheckConfig(rc,*config);
+    rc = IoTPConfig_setProperty(*config, "auth.token", argv[4]);
+    CheckConfig(rc,*config);
+}
+void CheckConfig(int rc, IoTPConfig *config){
+     if ( rc != 0 ) {
         syslog(LOG_ERR, "Failed to initialize configuration: rc=%d", rc);
-        IoTPConfig_clear(*config);
+        IoTPConfig_clear(config);
         cleanup();
     }
-    IoTPConfig_setProperty(*config, "identity.orgId", argv[1]);
-    IoTPConfig_setProperty(*config, "identity.typeId", argv[2]);
-    IoTPConfig_setProperty(*config, "identity.deviceId", argv[3]);
-    IoTPConfig_setProperty(*config, "auth.token", argv[4]);
 }
-
 void deviceCreate(IoTPDevice **device, IoTPConfig *config)
 {
     int rc = 0;
@@ -85,31 +93,43 @@ void deviceDisconnect(IoTPDevice *device, IoTPConfig *config)
         cleanupAll(device, config);
     }
 }
-
-void deviceSendEvent(IoTPDevice *device)
-{
-    char data[256];
+void deviceSendEventloop(IoTPDevice *device, IoTPConfig *config){
     int rc = 0;
+    struct ubus_context *ctx;
     struct memoryData memory={0, 0};
-    while(!interrupt){
-        connectUbus(&memory);
-        sprintf(data,"{\"Memory usage\": \"%0.2f MB / %0.2f MB\"}", ((memory.totalMemory-memory.freeMemory)/1000000.0), memory.totalMemory/1000000.0);
-        rc = IoTPDevice_sendEvent(device,"status", data, "json", QoS0, NULL);
-        syslog(LOG_INFO, "RC from sendEvent(): %d\n", rc);
-        sleep(10);
-        }
+    if(connectUbus(&ctx) != 0){
+        syslog(LOG_ERR, "Failed to connect to ubus");
+        cleanupAll(device, config);
     }
+    while(!interrupt){
+        if(getMemoryDataFromUbus(&ctx,&memory) != 0){
+            syslog(LOG_ERR, "Failed to get data from ubus");
+            cleanupAll(device, config);
+        }
+        deviceSendEvent(device, memory);
+        memset(&memory, 0, sizeof(memory));
+        sleep(10);
+    }
+    ubus_free(ctx);
+}
+void deviceSendEvent(IoTPDevice *device, struct memoryData memory)
+{
+    char data[255];
+    int rc = 0;
+    sprintf(data,"{\"Memory usage\": \"%0.2f MB / %0.2f MB\"}", ((memory.totalMemory-memory.freeMemory)/1000000.0), memory.totalMemory/1000000.0);
+    rc = IoTPDevice_sendEvent(device,"status", data, "json", QoS0, NULL);
+    syslog(LOG_INFO, "RC from sendEvent(): %d\n", rc);
+}
 
 int main(int argc, char *argv[])
 {
     IoTPConfig *config = NULL;
     IoTPDevice *device = NULL;
     openlog(NULL, LOG_CONS, LOG_USER);
+    syslog(LOG_INFO,"orgId: %s typeId: %s deviceId: %s authToken: %s",argv[1],argv[2],argv[3],argv[4]);
     
     if ( argc != 5 )
         usage();
-    syslog(LOG_INFO,"orgId: %s typeId: %s deviceId: %s authToken: %s",argv[1],argv[2],argv[3],argv[4]);
-    
     signal(SIGINT, sigHandler);
     signal(SIGTERM, sigHandler);
     
@@ -118,12 +138,10 @@ int main(int argc, char *argv[])
     deviceCreate(&device, config);
     deviceConnect(&device, config);
 
-    deviceSendEvent(device);
+    deviceSendEventloop(device, config);
 
     deviceDisconnect(device, config);
 
-    IoTPDevice_destroy(device);
-    IoTPConfig_clear(config);
-    closelog();
+    cleanupAll(device, config);
     return 0;
 }
